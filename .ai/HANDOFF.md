@@ -9,3 +9,5 @@ Submit typed turns to `POST /api/interview` with same-origin JSON containing `pr
 For the audio upload route, call `dockside.transcription.transcribe(audio, media_type)`. It accepts WebM, Ogg, and fragmented MP4 input up to 2 MiB and 30 seconds, raises `InvalidRecording` for unsupported or malformed recordings and `TranscriberUnavailable` for engine failures, and returns an empty string when no words are detected. Stop browser capture before the server duration limit and skip the interviewer call when the transcript is empty.
 
 For browser integration, POST the recording Blob directly to `/api/transcribe` with its recording media type. Read the response's `transcript` property. For a nonempty transcript, submit it as `text` with the code snapshot to `/api/interview`. See `docs/history/005-recording-upload.md` for response statuses and limits.
+
+For playback, POST the interviewer reply as UTF-8 `text/plain` to `/api/speech` and play the returned WAV Blob. Keep capture paused until playback ends or fails. Show the text reply even when synthesis or playback fails. See `docs/history/006-local-playback.md` for limits and statuses.

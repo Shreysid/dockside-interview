@@ -7,3 +7,5 @@ The service also accepts typed turns, code checks, and finish requests through a
 Local speech transcription now accepts supported browser audio formats through a bounded ffmpeg and Whisper base.en pipeline. Browser voice capture, a protected audio upload route, and interviewer playback are pending.
 
 The protected `POST /api/transcribe` route accepts raw browser audio and returns recognized speech. Browser integration and local playback remain pending.
+
+The protected `POST /api/speech` route renders interviewer replies as WAV using macOS `say`. The browser workspace, microphone capture modes, and browser playback integration remain pending.

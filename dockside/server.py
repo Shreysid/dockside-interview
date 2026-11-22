@@ -8,6 +8,7 @@ import re
 
 from dockside.interviewer import MAX_TURN_BYTES, InterviewerUnavailable, interview, validate_turn
 from dockside.problems import PROBLEMS
+from dockside.speech import MAX_SPEECH_BYTES, SpeechUnavailable, synthesize
 from dockside.transcription import (
     DEMUXERS,
     MAX_AUDIO_BYTES,
@@ -54,6 +55,10 @@ class DocksideHandler(BaseHTTPRequestHandler):
             body = self.read_upload(MAX_AUDIO_BYTES, DEMUXERS)
             if body is not None:
                 self.submit_recording(body)
+        elif self.path == "/api/speech":
+            body = self.read_upload(MAX_SPEECH_BYTES, ("text/plain",))
+            if body is not None:
+                self.submit_speech(body)
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -121,10 +126,29 @@ class DocksideHandler(BaseHTTPRequestHandler):
 
         self.send_json(payload)
 
+    def submit_speech(self, body):
+        try:
+            text = body.decode("utf-8")
+            if not text.strip() or re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", text):
+                raise ValueError
+        except ValueError:
+            self.send_json({"error": "Expected nonempty UTF-8 speech text"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            wav = synthesize(text.strip())
+        except SpeechUnavailable:
+            self.send_json({"error": "Local speech engine unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        self.send_body(wav, "audio/wav")
+
     def send_json(self, payload, status=HTTPStatus.OK):
         body = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
+        self.send_body(body, "application/json", status)
+
+    def send_body(self, body, media_type, status=HTTPStatus.OK):
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", media_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
