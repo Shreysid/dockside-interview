@@ -9,13 +9,18 @@ const send = document.querySelector("#send");
 const check = document.querySelector("#check");
 const finish = document.querySelector("#finish");
 const retry = document.querySelector("#retry");
+const record = document.querySelector("#record");
 const problemTitle = document.querySelector("#problem-title");
 const sessions = new Map();
 const encoder = new TextEncoder();
+const recordingTypes = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"];
+const recordingType = recordingTypes.find((type) => window.MediaRecorder?.isTypeSupported(type));
+const canRecord = recordingType && navigator.mediaDevices?.getUserMedia;
 
 let problem;
 let session;
 let pending = false;
+let capture = null;
 
 async function request(path, options) {
   const result = await fetch(path, options);
@@ -27,13 +32,88 @@ async function request(path, options) {
 }
 
 function updateControls() {
-  chooser.disabled = pending || !problem;
+  chooser.disabled = pending || Boolean(capture) || !problem;
   code.disabled = !problem;
   code.readOnly = pending || Boolean(session?.finished);
   response.disabled = !problem;
   response.readOnly = code.readOnly;
-  check.disabled = finish.disabled = !problem || code.readOnly;
+  check.disabled = finish.disabled = !problem || code.readOnly || Boolean(capture);
   send.disabled = check.disabled || !response.value.trim();
+  record.disabled = !canRecord || !problem || code.readOnly || Boolean(capture && !capture.stop);
+  record.textContent = capture?.stop ? "Stop recording" : "Record response";
+}
+
+async function recordResponse() {
+  if (capture?.stop) {
+    capture.stop();
+    return;
+  }
+  if (!canRecord || !session || pending || session.finished || capture) return;
+
+  const current = { stop: null, abort: new AbortController() };
+  capture = current;
+  let stream;
+  let timer;
+  const closeMic = () => {
+    clearTimeout(timer);
+    stream?.getTracks().forEach((track) => track.stop());
+  };
+  const { signal } = current.abort;
+  signal.addEventListener("abort", closeMic, { once: true });
+  status.textContent = "Waiting for microphone permission…";
+  updateControls();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (signal.aborted) return;
+    const recorder = new MediaRecorder(stream, { mimeType: recordingType, audioBitsPerSecond: 48000 });
+    const chunks = [];
+    const recording = new Promise((resolve, reject) => {
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size) chunks.push(event.data);
+      });
+      recorder.addEventListener("stop", () => resolve(new Blob(chunks, { type: recorder.mimeType })), { once: true });
+      recorder.addEventListener("error", () => reject(new Error("Microphone recording failed.")), { once: true });
+      recorder.start();
+    });
+    current.stop = () => {
+      current.stop = null;
+      if (recorder.state !== "inactive") recorder.stop();
+      closeMic();
+      status.textContent = "Transcribing recording…";
+      updateControls();
+    };
+    timer = setTimeout(current.stop, 25000);
+    status.textContent = "Recording…";
+    updateControls();
+
+    const blob = await recording;
+    closeMic();
+    current.stop = null;
+    if (signal.aborted) return;
+    if (!blob.size) {
+      status.textContent = "No audio was captured.";
+      return;
+    }
+    status.textContent = "Transcribing recording…";
+    updateControls();
+    const { transcript } = await request("/api/transcribe", { method: "POST", body: blob, signal });
+    if (transcript?.trim()) {
+      session.response = response.value = [response.value.trimEnd(), transcript.trim()].filter(Boolean).join("\n");
+      status.textContent = "Review the transcript, then send your response.";
+    } else {
+      status.textContent = "No speech was detected.";
+    }
+  } catch (error) {
+    if (!signal.aborted) {
+      status.textContent = error.name === "NotAllowedError"
+        ? "Microphone permission was denied. You can still type a response."
+        : error.message;
+    }
+  } finally {
+    closeMic();
+    capture = null;
+    updateControls();
+  }
 }
 
 function addMessage(entry) {
@@ -95,7 +175,7 @@ async function loadProblems() {
 }
 
 async function submit(intent) {
-  if (!session || pending || session.finished) return;
+  if (!session || pending || session.finished || capture) return;
 
   const text = response.value.trim();
   if (intent === "reply" && !text) return;
@@ -150,4 +230,6 @@ document.querySelector("#composer").addEventListener("submit", (event) => {
 check.addEventListener("click", () => submit("check"));
 finish.addEventListener("click", () => submit("finish"));
 retry.addEventListener("click", loadProblems);
+record.addEventListener("click", recordResponse);
+window.addEventListener("pagehide", () => capture?.abort.abort());
 loadProblems();

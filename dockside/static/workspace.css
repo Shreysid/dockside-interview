@@ -86,7 +86,7 @@ textarea { background: #0e1621; color: inherit; }
   tab-size: 4;
 }
 .actions, #composer { padding: 0.75rem 1rem; border-top: 1px solid var(--line); }
-.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.actions, .composer-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .messages {
   flex: 1;
   min-height: 10rem;
