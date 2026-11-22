@@ -11,6 +11,7 @@ const finish = document.querySelector("#finish");
 const retry = document.querySelector("#retry");
 const handsFree = document.querySelector("#hands-free");
 const record = document.querySelector("#record");
+const spokenReplies = document.querySelector("#spoken-replies");
 const problemTitle = document.querySelector("#problem-title");
 const sessions = new Map();
 const encoder = new TextEncoder();
@@ -26,6 +27,7 @@ let session;
 let pending = false;
 let capture = null;
 let listening = false;
+let playbackContext;
 
 async function request(path, options) {
   const result = await fetch(path, options);
@@ -42,6 +44,7 @@ function updateControls() {
   code.readOnly = pending || Boolean(session?.finished);
   response.disabled = !problem;
   response.readOnly = code.readOnly;
+  spokenReplies.disabled = pending || !window.AudioContext;
   check.disabled = finish.disabled = !problem || code.readOnly || Boolean(capture);
   send.disabled = check.disabled || !response.value.trim();
   handsFree.disabled = !listening && (!canRecord || !window.AudioContext || !problem || code.readOnly || Boolean(capture));
@@ -51,6 +54,44 @@ function updateControls() {
   record.textContent = capture?.stop
     ? (capture.automatic ? "Send recording" : "Stop recording")
     : "Record response";
+}
+
+async function speakReply(reply) {
+  const context = playbackContext;
+  if (context?.state !== "running") throw new Error("Audio is unavailable.");
+  status.textContent = "Preparing spoken reply…";
+  const result = await fetch("/api/speech", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=UTF-8" },
+    body: reply,
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!result.ok) throw new Error("Speech synthesis failed.");
+  const audio = await context.decodeAudioData(await result.arrayBuffer());
+  const source = context.createBufferSource();
+  source.buffer = audio;
+  source.connect(context.destination);
+  status.textContent = "Interviewer is speaking…";
+  try {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        source.stop();
+        reject(new Error("Playback timed out."));
+      }, (audio.duration + 5) * 1000);
+      source.onended = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      try {
+        source.start();
+      } catch (error) {
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
+  } finally {
+    source.disconnect();
+  }
 }
 
 function pauseMic() {
@@ -268,7 +309,16 @@ async function submit(intent) {
     addMessage(interviewer);
     session.response = response.value = "";
     session.finished = intent === "finish";
-    status.textContent = session.finished ? "Interview complete." : "";
+    const completion = session.finished ? "Interview complete." : "";
+    status.textContent = completion;
+    if (spokenReplies.checked) {
+      try {
+        await speakReply(reply);
+        status.textContent = completion;
+      } catch {
+        status.textContent = [completion, "Audio unavailable. The reply is in the conversation."].filter(Boolean).join(" ");
+      }
+    }
     return true;
   } catch (error) {
     status.textContent = error.message;
@@ -298,6 +348,16 @@ document.querySelector("#composer").addEventListener("submit", (event) => {
 check.addEventListener("click", () => submit("check"));
 finish.addEventListener("click", () => submit("finish"));
 retry.addEventListener("click", loadProblems);
+spokenReplies.addEventListener("change", async () => {
+  if (!spokenReplies.checked) return;
+  try {
+    playbackContext ??= new AudioContext();
+    await playbackContext.resume();
+  } catch {
+    spokenReplies.checked = false;
+    status.textContent = "Audio unavailable. You can continue with text.";
+  }
+});
 record.addEventListener("click", () => {
   if (capture?.stop) capture.stop();
   else void recordResponse();
@@ -313,5 +373,10 @@ handsFree.addEventListener("click", () => {
 window.addEventListener("pagehide", () => {
   listening = false;
   capture?.abort.abort();
+  if (playbackContext) {
+    void playbackContext.close();
+    playbackContext = undefined;
+    spokenReplies.checked = false;
+  }
 });
 loadProblems();
