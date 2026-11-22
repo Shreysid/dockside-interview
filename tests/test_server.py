@@ -206,12 +206,13 @@ class LoopbackTests(unittest.TestCase):
     def test_speech_renders_valid_text_and_reports_engine_failure(self, synthesize):
         origin = f"http://{self.host}"
 
-        def upload(body, *, origins=(origin,), length=None, media_type="text/plain"):
+        def upload(body, *, origins=(origin,), length=None, media_type="text/plain", voices=()):
             return self.request(
                 "POST", "/api/speech", origins=origins,
                 headers=[
                     ("Content-Type", media_type),
                     ("Content-Length", str(len(body) if length is None else length)),
+                    *(("X-Dockside-Voice", voice) for voice in voices),
                 ],
                 body=body,
             )
@@ -221,11 +222,16 @@ class LoopbackTests(unittest.TestCase):
         self.assertEqual(upload(b"hello", media_type="application/json")[0], 415)
         for body in (b" \n", b"\xff", b"hello\x00"):
             self.assertEqual(upload(body)[0], 400)
+        for voices in (("",), ("unknown",), ("af_bella", "af_bella"), ("af_heart, af_bella",)):
+            self.assertEqual(upload(b"hello", voices=voices)[0], 400)
         synthesize.assert_not_called()
 
         synthesize.return_value = b"RIFF....WAVE"
         self.assertEqual(upload(b" What happens next? "), (200, synthesize.return_value))
-        synthesize.assert_called_once_with("What happens next?")
+        synthesize.assert_called_once_with("What happens next?", "af_heart")
+        for voice in ("af_heart", "af_bella", "am_michael"):
+            self.assertEqual(upload(b"hello", voices=(voice,)), (200, synthesize.return_value))
+            synthesize.assert_called_with("hello", voice)
 
         synthesize.side_effect = SpeechUnavailable("private engine detail")
         status, body = upload(b"Try a heap.")

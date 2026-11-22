@@ -9,7 +9,7 @@ import re
 
 from dockside.interviewer import MAX_TURN_BYTES, InterviewerUnavailable, interview, validate_turn
 from dockside.problems import PROBLEMS
-from dockside.speech import MAX_SPEECH_BYTES, SpeechUnavailable, synthesize
+from dockside.speech import DEFAULT_VOICE, MAX_SPEECH_BYTES, VOICES, SpeechUnavailable, synthesize
 from dockside.transcription import (
     DEMUXERS,
     MAX_AUDIO_BYTES,
@@ -139,6 +139,11 @@ class DocksideHandler(BaseHTTPRequestHandler):
         self.send_json(payload)
 
     def submit_speech(self, body):
+        voices = self.headers.get_all("X-Dockside-Voice", [DEFAULT_VOICE])
+        if len(voices) != 1 or voices[0] not in VOICES:
+            self.send_json({"error": "Unsupported voice preset"}, HTTPStatus.BAD_REQUEST)
+            return
+
         try:
             text = body.decode("utf-8")
             if not text.strip() or re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", text):
@@ -148,7 +153,7 @@ class DocksideHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            wav = synthesize(text.strip())
+            wav = synthesize(text.strip(), voices[0])
         except SpeechUnavailable:
             self.send_json({"error": "Local speech engine unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
             return

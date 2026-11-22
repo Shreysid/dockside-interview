@@ -12,6 +12,8 @@ const retry = document.querySelector("#retry");
 const handsFree = document.querySelector("#hands-free");
 const record = document.querySelector("#record");
 const spokenReplies = document.querySelector("#spoken-replies");
+const voice = document.querySelector("#voice");
+const previewVoice = document.querySelector("#preview-voice");
 const problemTitle = document.querySelector("#problem-title");
 const sessions = new Map();
 const encoder = new TextEncoder();
@@ -25,6 +27,7 @@ const canRecord = recordingType && navigator.mediaDevices?.getUserMedia;
 let problem;
 let session;
 let pending = false;
+let previewing = false;
 let capture = null;
 let listening = false;
 let playbackContext;
@@ -39,31 +42,38 @@ async function request(path, options) {
 }
 
 function updateControls() {
-  chooser.disabled = pending || Boolean(capture) || !problem;
+  const busy = pending || previewing;
+  chooser.disabled = busy || Boolean(capture) || !problem;
   code.disabled = !problem;
   code.readOnly = pending || Boolean(session?.finished);
   response.disabled = !problem;
   response.readOnly = code.readOnly;
-  spokenReplies.disabled = pending || !window.AudioContext;
-  check.disabled = finish.disabled = !problem || code.readOnly || Boolean(capture);
+  spokenReplies.disabled = voice.disabled = busy || !window.AudioContext;
+  previewVoice.disabled = voice.disabled || listening || Boolean(capture);
+  check.disabled = finish.disabled = !problem || code.readOnly || previewing || Boolean(capture);
   send.disabled = check.disabled || !response.value.trim();
-  handsFree.disabled = !listening && (!canRecord || !window.AudioContext || !problem || code.readOnly || Boolean(capture));
+  handsFree.disabled = !listening && (!canRecord || !window.AudioContext || !problem || code.readOnly || previewing || Boolean(capture));
   handsFree.textContent = listening ? "Pause mic" : "Hands-free";
   handsFree.setAttribute("aria-pressed", String(listening));
-  record.disabled = !canRecord || !problem || code.readOnly || Boolean(capture && !capture.stop);
+  record.disabled = !canRecord || !problem || code.readOnly || previewing || Boolean(capture && !capture.stop);
   record.textContent = capture?.stop
     ? (capture.automatic ? "Send recording" : "Stop recording")
     : "Record response";
 }
 
-async function speakReply(reply) {
+async function enablePlayback() {
+  playbackContext ??= new AudioContext();
+  await playbackContext.resume();
+}
+
+async function playSpeech(text, preview = false) {
   const context = playbackContext;
   if (context?.state !== "running") throw new Error("Audio is unavailable.");
-  status.textContent = "Preparing spoken reply…";
+  status.textContent = preview ? "Preparing voice preview…" : "Preparing spoken reply…";
   const result = await fetch("/api/speech", {
     method: "POST",
-    headers: { "Content-Type": "text/plain;charset=UTF-8" },
-    body: reply,
+    headers: { "Content-Type": "text/plain;charset=UTF-8", "X-Dockside-Voice": voice.value },
+    body: text,
     signal: AbortSignal.timeout(30000),
   });
   if (!result.ok) throw new Error("Speech synthesis failed.");
@@ -71,7 +81,7 @@ async function speakReply(reply) {
   const source = context.createBufferSource();
   source.buffer = audio;
   source.connect(context.destination);
-  status.textContent = "Interviewer is speaking…";
+  status.textContent = preview ? "Playing voice preview…" : "Interviewer is speaking…";
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -102,7 +112,7 @@ function pauseMic() {
 }
 
 async function recordResponse(automatic = false) {
-  if (!canRecord || !session || pending || session.finished || capture) return;
+  if (!canRecord || !session || pending || previewing || session.finished || capture) return;
 
   const current = { automatic, stop: null, abort: new AbortController(), detector: null };
   capture = current;
@@ -270,7 +280,7 @@ async function loadProblems() {
 }
 
 async function submit(intent) {
-  if (!session || pending || session.finished || capture) return;
+  if (!session || pending || previewing || session.finished || capture) return;
 
   const text = response.value.trim();
   if (intent === "reply" && !text) return;
@@ -313,7 +323,7 @@ async function submit(intent) {
     status.textContent = completion;
     if (spokenReplies.checked) {
       try {
-        await speakReply(reply);
+        await playSpeech(reply);
         status.textContent = completion;
       } catch {
         status.textContent = [completion, "Audio unavailable. The reply is in the conversation."].filter(Boolean).join(" ");
@@ -351,11 +361,25 @@ retry.addEventListener("click", loadProblems);
 spokenReplies.addEventListener("change", async () => {
   if (!spokenReplies.checked) return;
   try {
-    playbackContext ??= new AudioContext();
-    await playbackContext.resume();
+    await enablePlayback();
   } catch {
     spokenReplies.checked = false;
     status.textContent = "Audio unavailable. You can continue with text.";
+  }
+});
+previewVoice.addEventListener("click", async () => {
+  if (pending || previewing || listening || capture) return;
+  previewing = true;
+  updateControls();
+  try {
+    await enablePlayback();
+    await playSpeech("Let's walk through your approach. What would you try first?", true);
+    status.textContent = session?.finished ? "Interview complete." : "";
+  } catch {
+    status.textContent = "Voice preview unavailable.";
+  } finally {
+    previewing = false;
+    updateControls();
   }
 });
 record.addEventListener("click", () => {
@@ -363,6 +387,7 @@ record.addEventListener("click", () => {
   else void recordResponse();
 });
 handsFree.addEventListener("click", () => {
+  if (previewing) return;
   if (listening) {
     pauseMic();
     return;

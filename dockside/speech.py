@@ -7,6 +7,8 @@ import wave
 
 MAX_SPEECH_BYTES = 4096
 MAX_WAV_BYTES = 4 * 1024 * 1024
+DEFAULT_VOICE = "af_heart"
+VOICES = frozenset({DEFAULT_VOICE, "af_bella", "am_michael"})
 MODEL_DIR = Path(__file__).resolve().parent.parent / "models"
 
 
@@ -24,9 +26,9 @@ def _engine():
     )
 
 
-def synthesize(text):
+def synthesize(text, voice=DEFAULT_VOICE):
     try:
-        samples, sample_rate = _engine().create(text, voice="af_heart", lang="en-us")
+        samples, sample_rate = _engine().create(text, voice=voice, speed=0.96, lang="en-us")
     except Exception as exc:
         # Model loading, phonemization and inference can all fail independently.
         raise SpeechUnavailable from exc
