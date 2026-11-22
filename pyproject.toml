@@ -3,7 +3,9 @@ name = "dockside-interview"
 version = "0.1.0"
 description = "A local coding interview practice workspace"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "kokoro-onnx==0.6.1",
+]
 
 [tool.uv]
 package = false

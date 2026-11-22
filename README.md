@@ -4,7 +4,7 @@ Dockside is a local coding interview practice workspace. Choose a problem, write
 
 ## Run locally
 
-Install uv and Ollama. Start Ollama locally with the `qwen3:4b` model available.
+Install uv and Ollama. The project selects Python 3.12 for the locked ONNX runtime. Start Ollama locally with the `qwen3:4b` model available.
 
 ```sh
 ollama pull qwen3:4b
@@ -18,7 +18,7 @@ To dictate a response, install ffmpeg and whisper-cli and place the Whisper base
 
 Select **Hands-free** to send spoken responses automatically. The microphone listens for sustained speech followed by 1.8 seconds of quiet. Typing in either editor postpones the quiet deadline. Select **Send recording** to end the recording manually. Select **Pause mic** to discard the current recording and use typed send, check, or finish. Hands-free listening resumes after the interviewer replies.
 
-Enable **Speak interviewer replies** to hear replies and final feedback through Chrome. This version uses the local macOS speech engine. With spoken replies enabled, hands-free capture stays closed through synthesis and playback. Replies and feedback also appear in the conversation, including when audio is unavailable.
+Enable **Speak interviewer replies** to hear replies and final feedback through Chrome. Dockside uses local Kokoro-82M with the English `af_heart` voice. Place `kokoro-v1.0.int8.onnx` and `voices-v1.0.bin` in `models/`. The server loads them on the first speech request. [Official model files](https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1). With spoken replies enabled, hands-free capture stays closed through synthesis and playback. Replies and feedback also appear in the conversation, including when audio is unavailable.
 
 ## Verify
 
@@ -33,3 +33,5 @@ With the server and Ollama running, choose a problem and edit its starter code. 
 For a microphone smoke test, start with a typed draft, select **Record response**, and say a short sentence. Stop the recording and verify that Chrome releases the microphone and the transcript follows the typed draft. Edit the code and send the response. Confirm that the candidate message includes the transcript and that the interviewer replies. Deny microphone permission and verify that typed responses still work.
 
 For a hands-free smoke test, enable **Hands-free** and stay quiet for 25 seconds. The conversation should remain unchanged. Speak a response, type in the code editor, and stop typing. After the quiet interval, confirm that Chrome releases the microphone, the transcript appears as a sent response, and listening resumes after the interviewer replies. Enable **Speak interviewer replies** and repeat a spoken turn. Confirm that Chrome keeps the microphone closed while the interviewer is speaking and resumes listening when playback ends. Select **Pause mic** and confirm that Chrome releases the microphone again.
+
+For a speech smoke test, enable **Speak interviewer replies**, send a response, and verify that the interviewer is audible. Finish the interview and verify that the feedback appears and plays. The first request also initializes the model.
