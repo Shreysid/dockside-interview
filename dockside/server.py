@@ -1,8 +1,11 @@
 """Loopback HTTP entry point for Dockside Interview."""
 
 import argparse
+import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+from dockside.problems import PROBLEMS
 
 LOOPBACK = "127.0.0.1"
 REQUEST_IDLE_TIMEOUT = 5
@@ -28,17 +31,21 @@ class DocksideHandler(BaseHTTPRequestHandler):
         return True
 
     def do_GET(self):
-        self.send_health()
+        self.send_read_response()
 
     def do_HEAD(self):
-        self.send_health()
+        self.send_read_response()
 
-    def send_health(self):
-        if self.path != "/health":
+    def send_read_response(self):
+        if self.path == "/health":
+            payload = {"status": "ok"}
+        elif self.path == "/api/problems":
+            payload = {"problems": PROBLEMS}
+        else:
             self.send_error(HTTPStatus.NOT_FOUND)
             return
 
-        body = b'{"status":"ok"}\n'
+        body = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

@@ -1,5 +1,6 @@
 import http.client
 from http.server import HTTPServer
+import json
 import threading
 import unittest
 
@@ -46,6 +47,22 @@ class LoopbackTests(unittest.TestCase):
         for hosts in ([], ["example.com"], [self.host, self.host]):
             with self.subTest(hosts=hosts):
                 self.assertEqual(self.request(hosts=hosts)[0], 403)
+
+    def test_problem_catalog_is_readable_and_protected(self):
+        path = "/api/problems"
+        status, body = self.request(path=path, origins=[f"http://{self.host}"])
+        self.assertEqual(status, 200)
+        problems = json.loads(body)["problems"]
+        self.assertGreaterEqual(len(problems), 3)
+        ids = [problem["id"] for problem in problems]
+        self.assertEqual(len(set(ids)), len(ids))
+        for problem in problems:
+            for field in ("id", "title", "prompt", "constraints", "example", "starter_code"):
+                self.assertIsInstance(problem[field], str)
+                self.assertTrue(problem[field].strip())
+        self.assertEqual(self.request(method="HEAD", path=path), (200, b""))
+        self.assertEqual(self.request(path=path, hosts=["example.com"])[0], 403)
+        self.assertEqual(self.request(path=path, origins=["https://example.com"])[0], 403)
 
     def test_rejects_foreign_null_and_duplicate_origin(self):
         origin = f"http://{self.host}"

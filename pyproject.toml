@@ -1,0 +1,9 @@
+[project]
+name = "dockside-interview"
+version = "0.1.0"
+description = "A local coding interview practice workspace"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+package = false

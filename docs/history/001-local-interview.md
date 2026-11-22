@@ -14,7 +14,7 @@ The service binds to IPv4 loopback. Every request must supply the exact numeric 
 
 ## Implementation
 
-Run `python3 -m dockside.server` and visit `http://127.0.0.1:8765/health`. Use `--port` to change the port. Run `python3 -m unittest discover -v` to exercise the policy with real HTTP connections on a temporary loopback port.
+Run `uv run --locked python -m dockside.server` and visit `http://127.0.0.1:8765/health`. Use `--port` to change the port. Run `uv run --locked python -m unittest discover -v` to exercise the policy with real HTTP connections on a temporary loopback port.
 
 ## Files Changed
 
