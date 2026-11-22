@@ -3,7 +3,9 @@ from http.server import HTTPServer
 import json
 import threading
 import unittest
+from unittest.mock import patch
 
+from dockside.interviewer import InterviewerUnavailable, MAX_TURN_BYTES
 from dockside.server import DocksideHandler, LOOPBACK
 
 
@@ -22,7 +24,7 @@ class LoopbackTests(unittest.TestCase):
         self.server.shutdown()
         self.thread.join()
 
-    def request(self, method="GET", path="/health", *, hosts=None, origins=()):
+    def request(self, method="GET", path="/health", *, hosts=None, origins=(), headers=(), body=None):
         connection = http.client.HTTPConnection(self.host, timeout=2)
         try:
             connection.putrequest(method, path, skip_host=True)
@@ -30,7 +32,9 @@ class LoopbackTests(unittest.TestCase):
                 connection.putheader("Host", host)
             for origin in origins:
                 connection.putheader("Origin", origin)
-            connection.endheaders()
+            for name, value in headers:
+                connection.putheader(name, value)
+            connection.endheaders(body)
             response = connection.getresponse()
             return response.status, response.read()
         finally:
@@ -72,4 +76,43 @@ class LoopbackTests(unittest.TestCase):
 
     def test_post_requires_same_origin_before_routing(self):
         self.assertEqual(self.request(method="POST")[0], 403)
-        self.assertEqual(self.request(method="POST", origins=[f"http://{self.host}"])[0], 501)
+        self.assertEqual(self.request(method="POST", origins=[f"http://{self.host}"])[0], 404)
+
+    def submit_turn(self, body, *, content_type="application/json", length=None):
+        return self.request(
+            "POST", "/api/interview",
+            origins=[f"http://{self.host}"],
+            headers=[
+                ("Content-Type", content_type),
+                ("Content-Length", str(len(body) if length is None else length)),
+            ],
+            body=body,
+        )
+
+    @patch("dockside.server.interview")
+    def test_valid_turn_calls_interviewer_and_engine_failure_is_reported(self, interview):
+        body = b'{"problem_id":"locker-utilization","intent":"check","code":"pass","text":""}'
+        interview.return_value = "What happens when intervals touch?"
+        status, response = self.submit_turn(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(response), {"reply": interview.return_value})
+        interview.assert_called_once_with("locker-utilization", "check", "pass", "")
+        interview.side_effect = InterviewerUnavailable("private error")
+        status, response = self.submit_turn(body)
+        self.assertEqual(status, 503)
+        self.assertEqual(json.loads(response), {"error": "Local interviewer unavailable"})
+
+    @patch("dockside.server.interview")
+    def test_invalid_requests_never_reach_model(self, interview):
+        self.assertEqual(self.request("POST", "/api/interview")[0], 403)
+        self.assertEqual(self.submit_turn(b"", length=MAX_TURN_BYTES + 1)[0], 413)
+        self.assertEqual(self.submit_turn(b"{}", content_type="text/plain")[0], 415)
+        for body in (
+            b"{",
+            b'{"problem_id":"unknown","intent":"check","code":"","text":""}',
+            b'{"problem_id":"locker-utilization","intent":"reply","code":"","text":" "}',
+            b'{"problem_id":"locker-utilization","intent":"check","code":"\\ud800","text":""}',
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(self.submit_turn(body)[0], 400)
+        interview.assert_not_called()

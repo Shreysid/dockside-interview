@@ -4,7 +4,9 @@ import argparse
 import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import re
 
+from dockside.interviewer import MAX_TURN_BYTES, InterviewerUnavailable, interview, validate_turn
 from dockside.problems import PROBLEMS
 
 LOOPBACK = "127.0.0.1"
@@ -36,6 +38,47 @@ class DocksideHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.send_read_response()
 
+    def do_POST(self):
+        if self.path != "/api/interview":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+
+        lengths = self.headers.get_all("Content-Length", [])
+        if (
+            self.headers.get_all("Transfer-Encoding") is not None
+            or len(lengths) != 1
+            or not re.fullmatch(r"[0-9]{1,10}", lengths[0])
+        ):
+            self.send_json({"error": "Expected one valid Content-Length"}, HTTPStatus.BAD_REQUEST)
+            return
+        size = int(lengths[0])
+        if size > MAX_TURN_BYTES:
+            self.send_json({"error": "Turn is too large"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            return
+        content_types = self.headers.get_all("Content-Type", [])
+        if len(content_types) != 1 or self.headers.get_content_type() != "application/json":
+            self.send_json({"error": "Expected JSON"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+            return
+
+        try:
+            body = self.rfile.read(size)
+            if len(body) != size:
+                raise ValueError("Incomplete body")
+            turn = validate_turn(json.loads(body.decode("utf-8")))
+        except TimeoutError:
+            self.send_json({"error": "Turn upload timed out"}, HTTPStatus.REQUEST_TIMEOUT)
+            return
+        except (ValueError, RecursionError):
+            self.send_json({"error": "Invalid interview turn"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            reply = interview(*turn)
+        except InterviewerUnavailable:
+            self.send_json({"error": "Local interviewer unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        self.send_json({"reply": reply})
+
     def send_read_response(self):
         if self.path == "/health":
             payload = {"status": "ok"}
@@ -45,13 +88,16 @@ class DocksideHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
 
+        self.send_json(payload)
+
+    def send_json(self, payload, status=HTTPStatus.OK):
         body = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
-        self.send_response(HTTPStatus.OK)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        if self.command == "GET":
+        if self.command != "HEAD":
             self.wfile.write(body)
 
     def log_message(self, format, *args):
