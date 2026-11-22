@@ -4,23 +4,47 @@ Dockside is a local coding interview practice workspace. Choose a problem, write
 
 ## Run locally
 
-Install uv and Ollama. The project selects Python 3.12 for the locked ONNX runtime. Start Ollama locally with the `qwen3:4b` model available.
+On macOS with Homebrew and Chrome installed, install the command-line dependencies.
+
+```sh
+brew install uv ollama ffmpeg whisper.cpp
+```
+
+Start Ollama in a separate Terminal window and leave it running. If Ollama is already serving locally, use that instance.
+
+```sh
+ollama serve
+```
+
+From the Dockside repository root, download the models and set up the locked Python environment. The project selects Python 3.12 for the ONNX runtime.
 
 ```sh
 ollama pull qwen3:4b
+mkdir -p models
+curl -fL --retry 3 -o models/ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+curl -fL --retry 3 -o models/kokoro-v1.0.int8.onnx https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.int8.onnx
+curl -fL --retry 3 -o models/voices-v1.0.bin https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin
 uv sync --locked
 uv run --locked python -m dockside.server
 ```
 
+After setup, you can start Dockside offline with Ollama still running locally and all model files in place.
+
+```sh
+uv run --locked --offline python -m dockside.server
+```
+
 Open `http://127.0.0.1:8765` in Chrome. Drafts and replies are held in the current page. Switching problems preserves each session until you reload. Each turn sends the current code and up to six recent messages from the selected problem to Ollama. The interviewer can offer a hint, and gives one when asked.
 
-To dictate a response, install ffmpeg and whisper-cli and place the Whisper base.en model at `models/ggml-base.en.bin`. Select **Record response** and grant Chrome microphone access. Select **Stop recording** when done. Recording stops automatically after 25 seconds. Dockside appends the transcript to your response draft, where you can edit it before sending.
+To dictate a response, select **Record response** and grant Chrome microphone access. Select **Stop recording** when done. Dockside appends the English transcript to your response draft, where you can edit it before sending. Each browser recording is capped at 25 seconds. The transcription endpoint accepts WebM, MP4, or Ogg audio with a 2 MiB upload limit and a 30-second decoded duration limit.
 
 Hold **Push to talk (hold)** with a pointer, Space, or Enter. Release to transcribe and send the response with the current code snapshot. Drag off the button or press Escape to cancel. Once the microphone opens, hold for at least a quarter second. If Chrome asks for permission, grant access and hold again. Capture stops after 25 seconds and sends when you release. Pause **Hands-free** before using push-to-talk. You can keep editing code while the interviewer is thinking or speaking.
 
 Select **Hands-free** to send spoken responses automatically. The microphone listens for sustained speech followed by 1.8 seconds of quiet. Typing in either editor postpones the quiet deadline. Select **Send recording** to end the recording manually. Select **Pause mic** to discard the current recording and use typed send, check, or finish. Hands-free listening resumes after the interviewer replies.
 
-Enable **Speak interviewer replies** to hear replies and final feedback through Chrome. Choose **Heart** (default), **Bella**, or **Michael** from the **Voice** menu. Dockside uses local Kokoro-82M at 0.96× speed. Select **Preview voice** to hear a sample with spoken replies on or off. Stop manual recording or pause hands-free mode before previewing. Place `kokoro-v1.0.int8.onnx` and `voices-v1.0.bin` in `models/`. The server loads them on the first speech request. [Official model files](https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1). With spoken replies enabled, hands-free capture stays closed through synthesis and playback. Replies and feedback also appear in the conversation, including when audio is unavailable.
+Enable **Speak interviewer replies** to hear replies and final feedback through Chrome. Choose **Heart** (default), **Bella**, or **Michael** from the **Voice** menu. Dockside uses local Kokoro-82M at 0.96× speed. Select **Preview voice** to hear a sample with spoken replies on or off. Stop manual recording or pause hands-free mode before previewing. With spoken replies enabled, hands-free capture stays closed through synthesis and playback. Replies and feedback also appear in the conversation, including when audio is unavailable.
+
+On one Apple M1 run with the locked environment already installed, the HTTP server started in 0.04 s and Whisper transcribed a short synthetic clip in 0.47 s. The first Ollama reply took 14.05 s with the model initially unloaded, and the first Kokoro request took 2.30 s including initialization. The following finish request took 2.04 s in Ollama and 0.60 s in Kokoro. These were local HTTP timings. Playback added 5.21 s for the reply and 3.35 s for the feedback, and hands-free mode also waits for its 1.8-second quiet interval before submitting.
 
 ## Verify
 
