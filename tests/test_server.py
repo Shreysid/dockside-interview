@@ -74,6 +74,7 @@ class LoopbackTests(unittest.TestCase):
         for path, marker in (
             ("/", b'id="code"'),
             ("/workspace.css", b".workspace"),
+            ("/turn-detection.mjs", b"createTurnDetector"),
             ("/workspace.js", b'"/api/interview"'),
         ):
             with self.subTest(path=path):

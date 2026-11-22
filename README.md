@@ -16,13 +16,18 @@ Open `http://127.0.0.1:8765` in Chrome. Drafts and replies are held in the curre
 
 To dictate a response, install ffmpeg and whisper-cli and place the Whisper base.en model at `models/ggml-base.en.bin`. Select **Record response** and grant Chrome microphone access. Select **Stop recording** when done. Recording stops automatically after 25 seconds. Dockside appends the transcript to your response draft, where you can edit it before sending.
 
+Select **Hands-free** to send spoken responses automatically. The microphone listens for sustained speech followed by 1.8 seconds of quiet. Typing in either editor postpones the quiet deadline. Select **Send recording** to end the recording manually. Select **Pause mic** to discard the current recording and use typed send, check, or finish. Hands-free listening resumes after the interviewer replies.
+
 ## Verify
 
 ```sh
 uv run --locked python -m unittest discover -v
-node --check dockside/static/workspace.js
+node --input-type=module --check < dockside/static/workspace.js
+node --test tests/turn-detection.test.mjs
 ```
 
 With the server and Ollama running, choose a problem and edit its starter code. Switch away and back to check that the draft survives. Type an approach and select **Send response**. Confirm the interviewer replies, then select **Check code** and confirm another reply arrives. Select **Finish interview** and confirm feedback appears and the controls close the session. At narrow window widths, the panels stack and long examples wrap.
 
 For a microphone smoke test, start with a typed draft, select **Record response**, and say a short sentence. Stop the recording and verify that Chrome releases the microphone and the transcript follows the typed draft. Edit the code and send the response. Confirm that the candidate message includes the transcript and that the interviewer replies. Deny microphone permission and verify that typed responses still work.
+
+For a hands-free smoke test, enable **Hands-free** and stay quiet for 25 seconds. The conversation should remain unchanged. Speak a response, type in the code editor, and stop typing. After the quiet interval, confirm that Chrome releases the microphone, the transcript appears as a sent response, and listening resumes after the interviewer replies. Select **Pause mic** and confirm that Chrome releases the microphone again.

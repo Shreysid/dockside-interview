@@ -24,6 +24,7 @@ STATIC_DIR = Path(__file__).with_name("static")
 ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/workspace.css": ("workspace.css", "text/css; charset=utf-8"),
+    "/turn-detection.mjs": ("turn-detection.mjs", "text/javascript; charset=utf-8"),
     "/workspace.js": ("workspace.js", "text/javascript; charset=utf-8"),
 }
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dockside Interview</title>
   <link rel="stylesheet" href="/workspace.css">
-  <script src="/workspace.js" defer></script>
+  <script src="/workspace.js" type="module"></script>
 </head>
 <body>
   <header class="masthead">
@@ -42,6 +42,7 @@
         <p id="status" role="status"></p>
         <div class="composer-actions">
           <button id="send" class="primary" type="submit" disabled>Send response</button>
+          <button id="hands-free" type="button" aria-pressed="false" disabled>Hands-free</button>
           <button id="record" type="button" disabled>Record response</button>
         </div>
       </form>
