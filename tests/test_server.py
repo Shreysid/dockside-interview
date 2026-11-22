@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from dockside.interviewer import InterviewerUnavailable, MAX_TURN_BYTES
 from dockside.server import DocksideHandler, LOOPBACK
+from dockside.transcription import MAX_AUDIO_BYTES, InvalidRecording, TranscriberUnavailable
 
 
 class LoopbackTests(unittest.TestCase):
@@ -116,3 +117,48 @@ class LoopbackTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertEqual(self.submit_turn(body)[0], 400)
         interview.assert_not_called()
+
+    @patch("dockside.server.transcribe")
+    def test_audio_upload_returns_transcript_or_reports_local_failure(self, transcribe):
+        def upload():
+            return self.request(
+                "POST", "/api/transcribe",
+                origins=[f"http://{self.host}"],
+                headers=[("Content-Type", "audio/webm;codecs=opus"), ("Content-Length", "5")],
+                body=b"audio",
+            )
+
+        for transcript in ("Try a heap.", ""):
+            with self.subTest(transcript=transcript):
+                transcribe.return_value = transcript
+                status, body = upload()
+                self.assertEqual(status, 200)
+                self.assertEqual(json.loads(body), {"transcript": transcript})
+                transcribe.assert_called_with(b"audio", "audio/webm")
+
+        for error, status in ((InvalidRecording, 400), (TranscriberUnavailable, 503)):
+            with self.subTest(error=error):
+                transcribe.side_effect = error("private engine detail")
+                actual_status, body = upload()
+                self.assertEqual(actual_status, status)
+                self.assertNotIn(b"private engine detail", body)
+
+    @patch("dockside.server.transcribe")
+    def test_audio_upload_validates_access_and_framing_before_transcribing(self, transcribe):
+        origin = f"http://{self.host}"
+        for hosts, origins, headers, status in (
+            (["example.com"], [origin], [("Content-Length", "0")], 403),
+            (None, [], [("Content-Length", "0")], 403),
+            (None, [origin], [], 400),
+            (None, [origin], [("Content-Length", "0")] * 2, 400),
+            (None, [origin], [("Content-Length", "0"), ("Transfer-Encoding", "chunked")], 400),
+            (None, [origin], [("Content-Length", str(MAX_AUDIO_BYTES + 1))], 413),
+            (None, [origin], [("Content-Length", "0"), ("Content-Type", "text/plain")], 415),
+            (None, [origin], [("Content-Length", "0")] + [("Content-Type", "audio/ogg")] * 2, 415),
+        ):
+            with self.subTest(hosts=hosts, origins=origins, headers=headers):
+                response, _ = self.request(
+                    "POST", "/api/transcribe", hosts=hosts, origins=origins, headers=headers,
+                )
+                self.assertEqual(response, status)
+        transcribe.assert_not_called()

@@ -8,6 +8,13 @@ import re
 
 from dockside.interviewer import MAX_TURN_BYTES, InterviewerUnavailable, interview, validate_turn
 from dockside.problems import PROBLEMS
+from dockside.transcription import (
+    DEMUXERS,
+    MAX_AUDIO_BYTES,
+    InvalidRecording,
+    TranscriberUnavailable,
+    transcribe,
+)
 
 LOOPBACK = "127.0.0.1"
 REQUEST_IDLE_TIMEOUT = 5
@@ -39,10 +46,18 @@ class DocksideHandler(BaseHTTPRequestHandler):
         self.send_read_response()
 
     def do_POST(self):
-        if self.path != "/api/interview":
+        if self.path == "/api/interview":
+            body = self.read_upload(MAX_TURN_BYTES, ("application/json",))
+            if body is not None:
+                self.submit_turn(body)
+        elif self.path == "/api/transcribe":
+            body = self.read_upload(MAX_AUDIO_BYTES, DEMUXERS)
+            if body is not None:
+                self.submit_recording(body)
+        else:
             self.send_error(HTTPStatus.NOT_FOUND)
-            return
 
+    def read_upload(self, max_bytes, media_types):
         lengths = self.headers.get_all("Content-Length", [])
         if (
             self.headers.get_all("Transfer-Encoding") is not None
@@ -52,22 +67,27 @@ class DocksideHandler(BaseHTTPRequestHandler):
             self.send_json({"error": "Expected one valid Content-Length"}, HTTPStatus.BAD_REQUEST)
             return
         size = int(lengths[0])
-        if size > MAX_TURN_BYTES:
-            self.send_json({"error": "Turn is too large"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        if size > max_bytes:
+            self.send_json({"error": "Upload is too large"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
             return
         content_types = self.headers.get_all("Content-Type", [])
-        if len(content_types) != 1 or self.headers.get_content_type() != "application/json":
-            self.send_json({"error": "Expected JSON"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+        if len(content_types) != 1 or self.headers.get_content_type() not in media_types:
+            self.send_json({"error": "Unsupported media type"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
             return
 
         try:
             body = self.rfile.read(size)
-            if len(body) != size:
-                raise ValueError("Incomplete body")
-            turn = validate_turn(json.loads(body.decode("utf-8")))
         except TimeoutError:
-            self.send_json({"error": "Turn upload timed out"}, HTTPStatus.REQUEST_TIMEOUT)
+            self.send_json({"error": "Upload timed out"}, HTTPStatus.REQUEST_TIMEOUT)
             return
+        if len(body) != size:
+            self.send_json({"error": "Incomplete upload"}, HTTPStatus.BAD_REQUEST)
+            return
+        return body
+
+    def submit_turn(self, body):
+        try:
+            turn = validate_turn(json.loads(body.decode("utf-8")))
         except (ValueError, RecursionError):
             self.send_json({"error": "Invalid interview turn"}, HTTPStatus.BAD_REQUEST)
             return
@@ -78,6 +98,17 @@ class DocksideHandler(BaseHTTPRequestHandler):
             self.send_json({"error": "Local interviewer unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
             return
         self.send_json({"reply": reply})
+
+    def submit_recording(self, body):
+        try:
+            transcript = transcribe(body, self.headers.get_content_type())
+        except InvalidRecording:
+            self.send_json({"error": "Invalid recording"}, HTTPStatus.BAD_REQUEST)
+            return
+        except TranscriberUnavailable:
+            self.send_json({"error": "Local transcriber unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        self.send_json({"transcript": transcript})
 
     def send_read_response(self):
         if self.path == "/health":
