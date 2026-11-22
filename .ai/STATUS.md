@@ -9,3 +9,5 @@ The browser offers the Heart, Bella, and Michael Kokoro presets at 0.96× speed.
 Push-to-talk accepts pointer, Space, and Enter holds. Release sends a transcribed reply automatically, and cancellation closes any tracks delivered by a pending permission request. The code editor stays editable during processing and playback. Headless Chrome verified push-to-talk with a synthetic microphone and stubbed turn endpoints.
 
 The README covers macOS dependencies, Ollama startup, public model downloads, and locked online and offline commands. A fresh loopback run used synthetic WebM audio, real Whisper, local Ollama, and real Kokoro for a reply and final feedback. The README records timings from that run and capture limits.
+
+The interviewer asks for one short, conversational question during normal turns so synthesis and playback take less time.
