@@ -70,6 +70,21 @@ class LoopbackTests(unittest.TestCase):
         self.assertEqual(self.request(path=path, hosts=["example.com"])[0], 403)
         self.assertEqual(self.request(path=path, origins=["https://example.com"])[0], 403)
 
+    def test_workspace_assets_are_readable_and_protected(self):
+        for path, marker in (
+            ("/", b'id="code"'),
+            ("/workspace.css", b".workspace"),
+            ("/workspace.js", b'"/api/interview"'),
+        ):
+            with self.subTest(path=path):
+                status, body = self.request(path=path)
+                self.assertEqual(status, 200)
+                self.assertIn(marker, body)
+                self.assertEqual(self.request(method="HEAD", path=path), (200, b""))
+                self.assertEqual(self.request(path=path, hosts=["example.com"])[0], 403)
+                self.assertEqual(self.request(path=path, origins=["https://example.com"])[0], 403)
+        self.assertEqual(self.request(path="/dockside/server.py")[0], 404)
+
     def test_rejects_foreign_null_and_duplicate_origin(self):
         origin = f"http://{self.host}"
         for origins in (["https://example.com"], ["null"], [origin, origin]):

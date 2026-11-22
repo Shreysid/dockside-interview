@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dockside Interview</title>
+  <link rel="stylesheet" href="/workspace.css">
+  <script src="/workspace.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <h1>Dockside <span>Interview</span></h1>
+    <label for="problem">Problem <select id="problem" disabled></select></label>
+  </header>
+  <main class="workspace">
+    <section class="panel problem" aria-labelledby="problem-title">
+      <div class="panel-header">Problem statement</div>
+      <div class="statement">
+        <h2 id="problem-title">Loading problems…</h2>
+        <p id="prompt"></p>
+        <h3>Constraints</h3>
+        <p id="constraints"></p>
+        <h3>Example</h3>
+        <pre id="example"></pre>
+        <button id="retry" type="button" hidden>Retry loading</button>
+      </div>
+    </section>
+    <section class="panel editor" aria-labelledby="editor-title">
+      <header class="panel-header"><h2 id="editor-title">Code editor</h2><span>Python</span></header>
+      <textarea id="code" aria-labelledby="editor-title" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" disabled></textarea>
+      <footer class="actions">
+        <button id="check" type="button" disabled>Check code</button>
+        <button id="finish" type="button" disabled>Finish interview</button>
+      </footer>
+    </section>
+    <section class="panel conversation" aria-labelledby="conversation-title">
+      <header class="panel-header"><h2 id="conversation-title">Conversation</h2></header>
+      <div id="messages" class="messages" role="log" aria-labelledby="conversation-title"></div>
+      <form id="composer">
+        <label for="response">Your response</label>
+        <textarea id="response" rows="3" placeholder="Describe your approach or ask for a hint…" disabled></textarea>
+        <p id="status" role="status"></p>
+        <button id="send" class="primary" type="submit" disabled>Send response</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

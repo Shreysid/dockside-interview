@@ -4,6 +4,7 @@ import argparse
 import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 import re
 
 from dockside.interviewer import MAX_TURN_BYTES, InterviewerUnavailable, interview, validate_turn
@@ -19,6 +20,12 @@ from dockside.transcription import (
 
 LOOPBACK = "127.0.0.1"
 REQUEST_IDLE_TIMEOUT = 5
+STATIC_DIR = Path(__file__).with_name("static")
+ASSETS = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/workspace.css": ("workspace.css", "text/css; charset=utf-8"),
+    "/workspace.js": ("workspace.js", "text/javascript; charset=utf-8"),
+}
 
 
 class DocksideHandler(BaseHTTPRequestHandler):
@@ -116,6 +123,10 @@ class DocksideHandler(BaseHTTPRequestHandler):
         self.send_json({"transcript": transcript})
 
     def send_read_response(self):
+        if self.path in ASSETS:
+            filename, media_type = ASSETS[self.path]
+            self.send_body((STATIC_DIR / filename).read_bytes(), media_type)
+            return
         if self.path == "/health":
             payload = {"status": "ok"}
         elif self.path == "/api/problems":

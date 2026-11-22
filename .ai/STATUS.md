@@ -1,11 +1,5 @@
 # Project status
 
-The MIT-licensed service exposes `/health` and a three-problem catalog at `/api/problems` under loopback Host and Origin checks. The project uses a locked, dependency-free uv environment. HTTP integration tests cover both routes and access policy.
+Dockside serves a responsive typed interview workspace at the loopback origin. It loads a three-problem catalog, holds a separate draft and transcript for each problem while the page is open, submits the current code with each typed, check, and finish action, and displays final feedback.
 
-The service also accepts typed turns, code checks, and finish requests through a bounded endpoint backed by local Ollama. The candidate workspace, conversation history, voice engines, and full setup guide are pending.
-
-Local speech transcription now accepts supported browser audio formats through a bounded ffmpeg and Whisper base.en pipeline. Browser voice capture, a protected audio upload route, and interviewer playback are pending.
-
-The protected `POST /api/transcribe` route accepts raw browser audio and returns recognized speech. Browser integration and local playback remain pending.
-
-The protected `POST /api/speech` route renders interviewer replies as WAV using macOS `say`. The browser workspace, microphone capture modes, and browser playback integration remain pending.
+The locked uv environment and HTTP tests cover typed turns, the catalog, static assets, and the loopback access policy. The existing transcription and speech routes are callable independently. Browser microphone capture, browser playback, Kokoro synthesis, and bounded model conversation history are pending.
