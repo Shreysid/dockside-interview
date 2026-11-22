@@ -10,6 +10,7 @@ const check = document.querySelector("#check");
 const finish = document.querySelector("#finish");
 const retry = document.querySelector("#retry");
 const handsFree = document.querySelector("#hands-free");
+const pushToTalk = document.querySelector("#push-to-talk");
 const record = document.querySelector("#record");
 const spokenReplies = document.querySelector("#spoken-replies");
 const voice = document.querySelector("#voice");
@@ -45,18 +46,20 @@ function updateControls() {
   const busy = pending || previewing;
   chooser.disabled = busy || Boolean(capture) || !problem;
   code.disabled = !problem;
-  code.readOnly = pending || Boolean(session?.finished);
+  code.readOnly = Boolean(session?.finished) && !pending;
   response.disabled = !problem;
-  response.readOnly = code.readOnly;
+  response.readOnly = pending || Boolean(session?.finished);
   spokenReplies.disabled = voice.disabled = busy || !window.AudioContext;
   previewVoice.disabled = voice.disabled || listening || Boolean(capture);
-  check.disabled = finish.disabled = !problem || code.readOnly || previewing || Boolean(capture);
+  check.disabled = finish.disabled = !problem || response.readOnly || previewing || Boolean(capture);
   send.disabled = check.disabled || !response.value.trim();
-  handsFree.disabled = !listening && (!canRecord || !window.AudioContext || !problem || code.readOnly || previewing || Boolean(capture));
+  handsFree.disabled = !listening && (!canRecord || !window.AudioContext || !problem || response.readOnly || previewing || Boolean(capture));
   handsFree.textContent = listening ? "Pause mic" : "Hands-free";
   handsFree.setAttribute("aria-pressed", String(listening));
-  record.disabled = !canRecord || !problem || code.readOnly || previewing || Boolean(capture && !capture.stop);
-  record.textContent = capture?.stop
+  record.disabled = !canRecord || !problem || response.readOnly || previewing || Boolean(capture && (capture.hold || !capture.stop));
+  pushToTalk.disabled = !canRecord || !problem || Boolean(session?.finished && !pending);
+  pushToTalk.setAttribute("aria-disabled", String(busy || listening || Boolean(capture && !capture.hold?.active)));
+  record.textContent = capture?.stop && !capture.hold
     ? (capture.automatic ? "Send recording" : "Stop recording")
     : "Record response";
 }
@@ -111,10 +114,10 @@ function pauseMic() {
   updateControls();
 }
 
-async function recordResponse(automatic = false) {
+async function recordResponse(automatic = false, hold = null) {
   if (!canRecord || !session || pending || previewing || session.finished || capture) return;
 
-  const current = { automatic, stop: null, abort: new AbortController(), detector: null };
+  const current = { automatic, hold, stop: null, abort: new AbortController(), detector: null };
   capture = current;
   let stream;
   let audioContext;
@@ -134,6 +137,7 @@ async function recordResponse(automatic = false) {
   signal.addEventListener("abort", () => {
     if (recorder && recorder.state !== "inactive") recorder.stop();
     closeMic();
+    hold?.release();
   }, { once: true });
   status.textContent = "Opening microphone…";
   updateControls();
@@ -162,12 +166,13 @@ async function recordResponse(automatic = false) {
       recorder.addEventListener("error", () => reject(new Error("Microphone recording failed.")), { once: true });
       recorder.start();
     });
+    if (hold) hold.startedAt = performance.now();
     current.stop = (shouldDiscard = false) => {
       discard = shouldDiscard;
       current.stop = null;
       if (recorder.state !== "inactive") recorder.stop();
       closeMic();
-      if (!discard) status.textContent = "Transcribing recording…";
+      if (!discard) status.textContent = hold?.active ? "Recording limit reached. Release to send." : "Transcribing recording…";
       updateControls();
     };
     if (automatic) {
@@ -189,6 +194,7 @@ async function recordResponse(automatic = false) {
     const blob = await recording;
     closeMic();
     current.stop = null;
+    if (hold) await hold.done;
     if (signal.aborted || discard) return;
     if (!blob.size) {
       status.textContent = "No audio was captured.";
@@ -200,7 +206,7 @@ async function recordResponse(automatic = false) {
     if (signal.aborted) return;
     if (transcript?.trim()) {
       session.response = response.value = [response.value.trimEnd(), transcript.trim()].filter(Boolean).join("\n");
-      autoSend = automatic;
+      autoSend = automatic || Boolean(hold);
       status.textContent = "Review the transcript, then send your response.";
     } else {
       status.textContent = "No speech was detected.";
@@ -214,8 +220,9 @@ async function recordResponse(automatic = false) {
     }
   } finally {
     closeMic();
+    hold?.release();
     capture = null;
-    if (autoSend && listening && !await submit("reply")) listening = false;
+    if (autoSend && (hold || listening) && !await submit("reply")) listening = false;
     updateControls();
     if (automatic && listening) void recordResponse(true);
   }
@@ -382,12 +389,77 @@ previewVoice.addEventListener("click", async () => {
     updateControls();
   }
 });
+function canStartHold() {
+  return !pushToTalk.disabled && pushToTalk.getAttribute("aria-disabled") !== "true" && !capture;
+}
+
+function beginHold(pointerId, key) {
+  const hold = { pointerId, key, active: true, startedAt: null };
+  hold.done = new Promise((resolve) => {
+    hold.release = () => {
+      hold.active = false;
+      resolve();
+    };
+  });
+  void recordResponse(false, hold);
+}
+
+function endHold(cancelled = false) {
+  const hold = capture?.hold;
+  if (!hold?.active) return;
+  hold.release();
+  if (cancelled || hold.startedAt === null || performance.now() - hold.startedAt < 250) {
+    capture.abort.abort();
+    status.textContent = cancelled ? "Recording cancelled." : "Hold to record for at least a moment.";
+  } else {
+    capture.stop?.();
+  }
+  updateControls();
+}
+
+function outsidePushToTalk(event) {
+  const bounds = pushToTalk.getBoundingClientRect();
+  return event.clientX < bounds.left || event.clientX > bounds.right
+    || event.clientY < bounds.top || event.clientY > bounds.bottom;
+}
+
+pushToTalk.addEventListener("pointerdown", (event) => {
+  if (!event.isPrimary || event.button !== 0 || !canStartHold()) return;
+  pushToTalk.setPointerCapture(event.pointerId);
+  beginHold(event.pointerId, null);
+});
+for (const type of ["pointermove", "pointerup", "pointercancel", "lostpointercapture"]) {
+  pushToTalk.addEventListener(type, (event) => {
+    if (capture?.hold?.pointerId !== event.pointerId) return;
+    if (type !== "pointermove" || outsidePushToTalk(event)) {
+      endHold(type !== "pointerup" || outsidePushToTalk(event));
+    }
+  });
+}
+pushToTalk.addEventListener("keydown", (event) => {
+  if (event.key !== " " && event.key !== "Enter") return;
+  event.preventDefault();
+  if (!event.repeat && canStartHold()) beginHold(null, event.key);
+});
+pushToTalk.addEventListener("keyup", (event) => {
+  if (capture?.hold?.key !== event.key) return;
+  event.preventDefault();
+  endHold();
+});
+pushToTalk.addEventListener("blur", () => {
+  if (capture?.hold?.key) endHold(true);
+});
+window.addEventListener("blur", () => endHold(true));
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") endHold(true);
+});
 record.addEventListener("click", () => {
+  if (capture?.hold) return;
   if (capture?.stop) capture.stop();
   else void recordResponse();
 });
 handsFree.addEventListener("click", () => {
-  if (previewing) return;
+  if (previewing || capture?.hold) return;
   if (listening) {
     pauseMic();
     return;

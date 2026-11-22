@@ -126,3 +126,13 @@ textarea { background: #0e1621; color: inherit; }
   .workspace { grid-template-columns: minmax(0, 1fr); }
   .conversation { grid-column: auto; }
 }
+
+#push-to-talk {
+  touch-action: none;
+  user-select: none;
+}
+
+#push-to-talk[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
