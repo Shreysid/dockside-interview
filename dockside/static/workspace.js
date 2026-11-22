@@ -14,6 +14,9 @@ const record = document.querySelector("#record");
 const problemTitle = document.querySelector("#problem-title");
 const sessions = new Map();
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+const historyTextBytes = 400;
+const historyMessageLimit = 6;
 const recordingTypes = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"];
 const recordingType = recordingTypes.find((type) => window.MediaRecorder?.isTypeSupported(type));
 const canRecord = recordingType && navigator.mediaDevices?.getUserMedia;
@@ -240,10 +243,15 @@ async function submit(intent) {
   status.textContent = intent === "finish" ? "Preparing feedback…" : "Interviewer is thinking…";
   updateControls();
   try {
+    const buffer = new Uint8Array(historyTextBytes);
+    const history = session.messages.slice(-historyMessageLimit).map(({ role, text }) => {
+      const { written } = encoder.encodeInto(text, buffer);
+      return { role, text: decoder.decode(buffer.subarray(0, written)) };
+    });
     const { reply } = await request("/api/interview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ problem_id: problem.id, intent, code: snapshot, text }),
+      body: JSON.stringify({ problem_id: problem.id, intent, code: snapshot, text, history }),
     });
     const candidate = {
       role: "candidate",

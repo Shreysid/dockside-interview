@@ -12,7 +12,7 @@ uv sync --locked
 uv run --locked python -m dockside.server
 ```
 
-Open `http://127.0.0.1:8765` in Chrome. Drafts and replies are held in the current page. Switching problems preserves each session until you reload.
+Open `http://127.0.0.1:8765` in Chrome. Drafts and replies are held in the current page. Switching problems preserves each session until you reload. Each turn sends the current code and up to six recent messages from the selected problem to Ollama. The interviewer can offer a hint, and gives one when asked.
 
 To dictate a response, install ffmpeg and whisper-cli and place the Whisper base.en model at `models/ggml-base.en.bin`. Select **Record response** and grant Chrome microphone access. Select **Stop recording** when done. Recording stops automatically after 25 seconds. Dockside appends the transcript to your response draft, where you can edit it before sending.
 
@@ -26,7 +26,7 @@ node --input-type=module --check < dockside/static/workspace.js
 node --test tests/turn-detection.test.mjs
 ```
 
-With the server and Ollama running, choose a problem and edit its starter code. Switch away and back to check that the draft survives. Type an approach and select **Send response**. Confirm the interviewer replies, then select **Check code** and confirm another reply arrives. Select **Finish interview** and confirm feedback appears and the controls close the session. At narrow window widths, the panels stack and long examples wrap.
+With the server and Ollama running, choose a problem and edit its starter code. Switch away and back to check that the draft survives. Type an approach and select **Send response**. Confirm the interviewer replies. Refer back to a detail from your first response in a follow-up, then select **Check code** and confirm another reply arrives. Select **Finish interview** and confirm feedback appears and the controls close the session. At narrow window widths, the panels stack and long examples wrap.
 
 For a microphone smoke test, start with a typed draft, select **Record response**, and say a short sentence. Stop the recording and verify that Chrome releases the microphone and the transcript follows the typed draft. Edit the code and send the response. Confirm that the candidate message includes the transcript and that the interviewer replies. Deny microphone permission and verify that typed responses still work.
 

@@ -114,11 +114,33 @@ class LoopbackTests(unittest.TestCase):
         status, response = self.submit_turn(body)
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(response), {"reply": interview.return_value})
-        interview.assert_called_once_with("locker-utilization", "check", "pass", "")
+        interview.assert_called_once_with("locker-utilization", "check", "pass", "", [])
         interview.side_effect = InterviewerUnavailable("private error")
         status, response = self.submit_turn(body)
         self.assertEqual(status, 503)
         self.assertEqual(json.loads(response), {"error": "Local interviewer unavailable"})
+
+    @patch("dockside.server.interview")
+    def test_turn_accepts_bounded_history(self, interview):
+        interview.return_value = "How would you handle ties?"
+        message = {"role": "candidate", "text": "é" * 200}
+        turn = {"problem_id": "locker-utilization", "intent": "reply", "code": "pass", "text": "Yes"}
+        history = [message] * 6
+        self.assertEqual(self.submit_turn(json.dumps({**turn, "history": history}).encode())[0], 200)
+        interview.assert_called_once_with("locker-utilization", "reply", "pass", "Yes", history)
+        interview.reset_mock()
+
+        for invalid_history in (
+            None,
+            [message] * 7,
+            [{**message, "text": message["text"] + "a"}],
+            [{**message, "role": "system"}],
+            [{**message, "extra": 1}],
+        ):
+            with self.subTest(history=invalid_history):
+                body = json.dumps({**turn, "history": invalid_history}).encode()
+                self.assertEqual(self.submit_turn(body)[0], 400)
+        interview.assert_not_called()
 
     @patch("dockside.server.interview")
     def test_invalid_requests_never_reach_model(self, interview):
