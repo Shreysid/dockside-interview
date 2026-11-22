@@ -1,0 +1,16 @@
+.gnhf/
+.codegraph/
+__pycache__/
+.venv/
+.env
+.env.*
+credentials/
+credentials.*
+secrets/
+models/
+weights/
+*.gguf
+*.bin
+*.safetensors
+*.pt
+*.pth
